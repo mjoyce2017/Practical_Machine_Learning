@@ -1,0 +1,117 @@
+---
+title: "Practical Machine Learning Project"
+author: "Myles Joyce"
+date: "9/26/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Background  
+As the use of wearable fitness devices increases, the data regarding people's activity levels has become more accessible. Usually, this data is used to quantify how much of a particular activity that the wearers perform but rarely how well said activity is performed. This performance value could potentially be quantified using accelerometer data from the belt, forearm, arm, and dumbbell of 6 participants who perform barbell lifts both in correct and incorrect fashion.
+
+### Data
+
+**Training Data**: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv  
+**Test Data**: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv  
+
+More information about the data can be found here: http://groupware.les.inf.puc-rio.br/har   
+"Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E)."  
+
+### Purpose   
+- To predict the manner in which the participants performed the exercise. This is the "classE" variable. This is to be done through model building, cross validation, and out-of-sample error calculation.  
+
+### Package and Data Loading  
+``` {r}
+setwd(getwd())
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(gbm)
+library(repmis)
+library(corrplot)
+library(rattle)
+library(RGtk2)
+trUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+teUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train <- read.csv(url(trUrl), na.strings=c("NA","#DIV/0!",""))
+test <- read.csv(url(teUrl), na.strings=c("NA","#DIV/0!",""))
+```
+   
+### Cleaning the Data
+Removing the first 8 variables which seem to be irrelevant.  
+``` {r}
+train <- train[, -c(1:8)]
+```
+Removing any columns that are more than 50% NA's.  
+```{r}
+train2 <- train 
+for(i in 1:length(train)) { 
+        if( sum( is.na( train[, i] ) ) /nrow(train) >= .5 ) { 
+        for(j in 1:length(train)) {
+            if( length( grep(names(train[i]), names(train2)[j]) ) ==1)  {
+                train2 <- train2[ , -j]
+            }   
+        } 
+    }
+}
+train <- train2
+```
+Applying these changes to the test set.  
+``` {r}
+test <- test[colnames(train[,-52])]
+```
+
+### Partioning Data
+Splitting the data 65% into a training set and 35% into a testing set. Also, setting the seed.  
+``` {r}
+set.seed(1110)
+in_train <- createDataPartition(y=train$classe, p=0.65, list=FALSE)
+my_train <- train[in_train, ]
+my_test <- train[-in_train, ]
+dim(my_train)
+dim(my_test)
+```
+The dimensions check out, so now can start modeling.  
+
+
+### Classification Tree Model  
+The first method to test will be the classification tree method. I also set the control here to decrease the run time for the training packages. This will sacrifice a little bit of accuracy, but it shouldn't affect results.  
+```{r}
+control <- trainControl(method = "cv", number = 3)
+model_ct <- train(classe ~ ., data = my_train, method = "rpart", trControl = control)
+print(model_ct, digits = 4)
+fancyRpartPlot(model_ct$finalModel)
+```
+   
+### Classification Tree Prediction   
+Now, I will predict my test set using the classification tree methodology.  
+```{r}
+predict_ct <- predict(model_ct, my_test)
+confusionMatrix(table(my_test$classe, predict_ct))
+```
+An accuracy of 57.64%, YIKES. Back to the drawing board.  
+  
+### Random Forest Model & Prediction
+As classification trees provided such a low accuracy, the next more intensive methodology to be tested will be random forest.  
+``` {r}
+model_rf <- train(classe ~ ., data = my_train, method = "rf", trControl = control)
+print(model_rf, digits = 4)
+predict_rf <- predict(model_rf, my_test)
+confusionMatrix(table(my_test$classe, predict_rf))
+```
+  
+This model proves to be the best, as it has an accuracy of 99.4%. This means that the out-of-sample error rate is 0.006. 
+
+### Test Time  
+Below, you can see the random forest model's predictions for the test set.  
+```{r}
+predict(model_rf, test)
+```
+
+### Acknowledgements  
+A big **THANK YOU** to the generous providers of the data for this project. Their information and more detail regarding the data can be found below:  
+http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
